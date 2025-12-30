@@ -26,14 +26,13 @@ class NangoService:
     async def get_connection(self, connection_id: str) -> Optional[Dict[str, Any]]:
         """
         Get connection details from Nango
-        
+
         Args:
             connection_id: The connection identifier
-            
+
         Returns:
             Connection details including credentials and config
         """
-        print(f"DEBUG: Getting connection details from Nango for ID: {connection_id}")
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
@@ -42,19 +41,15 @@ class NangoService:
                     params={"provider_config_key": self.provider_key},
                     timeout=10.0
                 )
-                print(f"DEBUG: Nango response status: {response.status_code}")
                 response.raise_for_status()
                 return response.json()
             except httpx.TimeoutException:
-                print(f"DEBUG: Nango request timed out for connection {connection_id}")
                 raise
             except httpx.HTTPStatusError as e:
-                print(f"DEBUG: Nango HTTP error {e.response.status_code}: {e.response.text}")
                 if e.response.status_code == 404:
                     return None
                 raise
-            except Exception as e:
-                print(f"DEBUG: Error getting connection: {e}")
+            except Exception:
                 return None
     
     async def proxy_get(

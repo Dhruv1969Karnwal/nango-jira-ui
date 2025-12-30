@@ -1,22 +1,15 @@
 """
 Jira API service for project and issue operations
 """
+import httpx
 from typing import List, Optional, Dict, Any
 from services.nango_service import nango_service
-from models import (
-    JiraProject, 
-    JiraIssue, 
-    JiraIssueType, 
-    JiraUser,
-    CreateIssueRequest,
-    CreateIssueResponse
-)
 
 
 class JiraService:
     """Service for Jira-specific operations via Nango proxy"""
     
-    async def get_myself(self, connection_id: str, cloud_id: str) -> Optional[JiraUser]:
+    async def get_myself(self, connection_id: str, cloud_id: str) -> Optional[dict]:
         """
         Get current user information
         
@@ -30,17 +23,16 @@ class JiraService:
         try:
             endpoint = f"/ex/jira/{cloud_id}/rest/api/3/myself"
             data = await nango_service.proxy_get(connection_id, endpoint)
-            return JiraUser(
-                accountId=data.get("accountId"),
-                emailAddress=data.get("emailAddress"),
-                displayName=data.get("displayName"),
-                active=data.get("active", True)
-            )
-        except Exception as e:
-            print(f"Error getting current user: {e}")
+            return {
+                "account_id": data.get("accountId"),
+                "email_address": data.get("emailAddress"),
+                "display_name": data.get("displayName"),
+                "active": data.get("active", True)
+            }
+        except Exception:
             return None
     
-    async def get_projects(self, connection_id: str, cloud_id: str) -> List[JiraProject]:
+    async def get_projects(self, connection_id: str, cloud_id: str) -> List[dict]:
         """
         Fetch all accessible Jira projects
         
@@ -61,17 +53,16 @@ class JiraService:
             
             projects = []
             for p in data.get("values", []):
-                projects.append(JiraProject(
-                    id=p["id"],
-                    key=p["key"],
-                    name=p["name"],
-                    url=p.get("self", ""),
-                    projectTypeKey=p.get("projectTypeKey", "software"),
-                    webUrl=f"https://atlassian.net/browse/{p['key']}"
-                ))
+                projects.append({
+                    "id": p["id"],
+                    "key": p["key"],
+                    "name": p["name"],
+                    "url": p.get("self", ""),
+                    "project_type_key": p.get("projectTypeKey", "software"),
+                    "web_url": f"https://atlassian.net/browse/{p['key']}"
+                })
             return projects
-        except Exception as e:
-            print(f"Error fetching projects: {e}")
+        except Exception:
             return []
     
     async def get_issues(
@@ -81,7 +72,7 @@ class JiraService:
         project_key: Optional[str] = None,
         max_results: int = 50,
         jql: Optional[str] = None
-    ) -> List[JiraIssue]:
+    ) -> List[dict]:
         """
         Fetch Jira issues
         
@@ -148,31 +139,27 @@ class JiraService:
                             "body": c.get("body", {})
                         })
                 
-                issues.append(JiraIssue(
-                    id=issue["id"],
-                    key=issue["key"],
-                    summary=fields.get("summary", ""),
-                    issueType=issue_type.get("name", "Task"),
-                    status=status.get("name", "Unknown"),
-                    assignee=assignee.get("displayName") if assignee else None,
-                    url=issue.get("self", ""),
-                    webUrl=f"https://atlassian.net/browse/{issue['key']}",
-                    projectId=project.get("id", ""),
-                    projectKey=project.get("key", ""),
-                    projectName=project.get("name", ""),
-                    createdAt=fields.get("created", ""),
-                    updatedAt=fields.get("updated", ""),
-                    comments=comments
-                ))
+                issues.append({
+                    "id": issue["id"],
+                    "key": issue["key"],
+                    "summary": fields.get("summary", ""),
+                    "issue_type": issue_type.get("name", "Task"),
+                    "status": status.get("name", "Unknown"),
+                    "assignee": assignee.get("displayName") if assignee else None,
+                    "url": issue.get("self", ""),
+                    "web_url": f"https://atlassian.net/browse/{issue['key']}",
+                    "project_id": project.get("id", ""),
+                    "project_key": project.get("key", ""),
+                    "project_name": project.get("name", ""),
+                    "created_at": fields.get("created", ""),
+                    "updated_at": fields.get("updated", ""),
+                    "comments": comments
+                })
             
             return issues
-        except httpx.HTTPStatusError as e:
-            print(f"JIRA PROXY ERROR (HTTP {e.response.status_code}): {e.response.text}")
+        except httpx.HTTPStatusError:
             raise
-        except Exception as e:
-            print(f"Error fetching issues: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
             return []
     
     async def get_issue_types(
@@ -180,7 +167,7 @@ class JiraService:
         connection_id: str, 
         cloud_id: str,
         project_id: str
-    ) -> List[JiraIssueType]:
+    ) -> List[dict]:
         """
         Fetch issue types for a project
         
@@ -202,24 +189,23 @@ class JiraService:
             
             issue_types = []
             for it in data:
-                issue_types.append(JiraIssueType(
-                    id=it["id"],
-                    name=it["name"],
-                    description=it.get("description"),
-                    iconUrl=it.get("iconUrl"),
-                    subtask=it.get("subtask", False)
-                ))
+                issue_types.append({
+                    "id": it["id"],
+                    "name": it["name"],
+                    "description": it.get("description"),
+                    "icon_url": it.get("iconUrl"),
+                    "subtask": it.get("subtask", False)
+                })
             return issue_types
-        except Exception as e:
-            print(f"Error fetching issue types: {e}")
+        except Exception:
             return []
     
     async def create_issue(
         self,
         connection_id: str,
         cloud_id: str,
-        request: CreateIssueRequest
-    ) -> Optional[CreateIssueResponse]:
+        request: dict
+    ) -> Optional[dict]:
         """
         Create a new Jira issue
         
@@ -237,14 +223,14 @@ class JiraService:
             # Build issue data
             issue_data: Dict[str, Any] = {
                 "fields": {
-                    "project": {"key": request.project_key},
-                    "summary": request.summary,
-                    "issuetype": {"name": request.issue_type}
+                    "project": {"key": request["projectKey"]},
+                    "summary": request["summary"],
+                    "issuetype": {"name": request["issueType"]}
                 }
             }
-            
+
             # Add optional fields
-            if request.description:
+            if request.get("description"):
                 issue_data["fields"]["description"] = {
                     "type": "doc",
                     "version": 1,
@@ -252,27 +238,26 @@ class JiraService:
                         {
                             "type": "paragraph",
                             "content": [
-                                {"type": "text", "text": request.description}
+                                {"type": "text", "text": request["description"]}
                             ]
                         }
                     ]
                 }
-            
-            if request.assignee_id:
-                issue_data["fields"]["assignee"] = {"accountId": request.assignee_id}
-            
-            if request.labels:
-                issue_data["fields"]["labels"] = request.labels
+
+            if request.get("assignee_id"):
+                issue_data["fields"]["assignee"] = {"accountId": request["assignee_id"]}
+
+            if request.get("labels"):
+                issue_data["fields"]["labels"] = request["labels"]
             
             data = await nango_service.proxy_post(connection_id, endpoint, issue_data)
-            
-            return CreateIssueResponse(
-                id=data["id"],
-                key=data["key"],
-                self=data["self"]
-            )
-        except Exception as e:
-            print(f"Error creating issue: {e}")
+
+            return {
+                "id": data["id"],
+                "key": data["key"],
+                "self_url": data["self"]
+            }
+        except Exception:
             raise
 
 

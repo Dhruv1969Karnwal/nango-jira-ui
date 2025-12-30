@@ -4,39 +4,27 @@ API routes for Jira operations
 from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from models import (
-    JiraProject,
-    JiraIssue,
-    JiraIssueType,
-    CreateIssueRequest,
-    CreateIssueResponse,
-    ConnectionStatus
-)
 from services.nango_service import nango_service
 from services.jira_service import jira_service
 
 router = APIRouter(prefix="/api", tags=["jira"])
 
 
-@router.post("/connection", response_model=ConnectionStatus)
+@router.post("/connection")
 async def save_connection(request: Request, data: Dict[str, Any]):
     """
     Save or update a Nango connection in MongoDB
     """
     connection_id = data.get("connectionId")
-    print(f"DEBUG: Received save_connection request for ID: {connection_id}")
     if not connection_id:
         raise HTTPException(status_code=400, detail="Missing connectionId")
     
     try:
         # Verify with Nango
-        print("DEBUG: Verifying connection with Nango...")
         connection = await nango_service.get_connection(connection_id)
         if not connection:
-            print("DEBUG: Connection not found in Nango")
             raise HTTPException(status_code=404, detail="Connection not found in Nango")
-        
-        print("DEBUG: Connection found, extracting config...")
+
         config = connection.get("connection_config", {})
         cloud_id = config.get("cloudId")
         account_id = config.get("accountId")
@@ -45,15 +33,12 @@ async def save_connection(request: Request, data: Dict[str, Any]):
         user_email = None
         user_name = None
         if cloud_id:
-            print(f"DEBUG: Fetching user info for Cloud ID: {cloud_id}...")
             user = await jira_service.get_myself(connection_id, cloud_id)
             if user:
-                user_email = user.email_address
-                user_name = user.display_name
-                print(f"DEBUG: User info found: {user_email}")
-        
+                user_email = user["email_address"]
+                user_name = user["display_name"]
+
         # Save to MongoDB
-        print("DEBUG: Saving to MongoDB...")
         db = request.app.state.mongodb
         connection_doc = {
             "connection_id": connection_id,
@@ -64,32 +49,26 @@ async def save_connection(request: Request, data: Dict[str, Any]):
             "user_name": user_name,
             "updated_at": datetime.utcnow()
         }
-        
-        # Set a shorter connection timeout for MongoDB if needed, 
-        # but let's see if this print reveals the hang
+
         await db.connections.update_one(
             {"connection_id": connection_id},
             {"$set": connection_doc, "$setOnInsert": {"created_at": datetime.utcnow()}},
             upsert=True
         )
-        print("DEBUG: MongoDB save successful")
         
-        return ConnectionStatus(
-            connected=True,
-            connectionId=connection_id,
-            cloudId=cloud_id,
-            accountId=account_id,
-            userEmail=user_email,
-            userName=user_name
-        )
+        return {
+            "connected": True,
+            "connection_id": connection_id,
+            "cloud_id": cloud_id,
+            "account_id": account_id,
+            "user_email": user_email,
+            "user_name": user_name
+        }
     except Exception as e:
-        print(f"DEBUG: ERROR in save_connection: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/connection/{connection_id}", response_model=ConnectionStatus)
+@router.get("/connection/{connection_id}")
 async def get_connection_status(request: Request, connection_id: str):
     """
     Check the status of a Jira connection
@@ -103,11 +82,11 @@ async def get_connection_status(request: Request, connection_id: str):
         connection = await nango_service.get_connection(connection_id)
         
         if not connection:
-            return ConnectionStatus(
-                connected=False,
-                connectionId=connection_id,
-                error="Connection not found in Nango"
-            )
+            return {
+                "connected": False,
+                "connection_id": connection_id,
+                "error": "Connection not found in Nango"
+            }
         
         config = connection.get("connection_config", {})
         cloud_id = config.get("cloudId")
@@ -122,29 +101,28 @@ async def get_connection_status(request: Request, connection_id: str):
             try:
                 user = await jira_service.get_myself(connection_id, cloud_id)
                 if user:
-                    user_email = user.email_address
-                    user_name = user.display_name
+                    user_email = user["email_address"]
+                    user_name = user["display_name"]
             except Exception:
                 pass
         
-        return ConnectionStatus(
-            connected=True,
-            connectionId=connection_id,
-            cloudId=cloud_id,
-            accountId=config.get("accountId"),
-            userEmail=user_email,
-            userName=user_name
-        )
+        return {
+            "connected": True,
+            "connection_id": connection_id,
+            "cloud_id": cloud_id,
+            "account_id": config.get("accountId"),
+            "user_email": user_email,
+            "user_name": user_name
+        }
     except Exception as e:
-        print(f"Error checking connection status: {e}")
-        return ConnectionStatus(
-            connected=False,
-            connectionId=connection_id,
-            error=str(e)
-        )
+        return {
+            "connected": False,
+            "connection_id": connection_id,
+            "error": str(e)
+        }
 
 
-@router.get("/projects/{connection_id}", response_model=List[JiraProject])
+@router.get("/projects/{connection_id}")
 async def get_projects(connection_id: str):
     """
     Fetch all Jira projects for a connection
@@ -163,7 +141,7 @@ async def get_projects(connection_id: str):
     return projects
 
 
-@router.get("/issues/{connection_id}", response_model=List[JiraIssue])
+@router.get("/issues/{connection_id}")
 async def get_issues(
     connection_id: str,
     project_key: Optional[str] = Query(None, description="Filter by project key"),
@@ -191,7 +169,7 @@ async def get_issues(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/issue-types/{connection_id}/{project_id}", response_model=List[JiraIssueType])
+@router.get("/issue-types/{connection_id}/{project_id}")
 async def get_issue_types(connection_id: str, project_id: str):
     """
     Fetch issue types for a project
@@ -216,8 +194,8 @@ async def get_issue_types(connection_id: str, project_id: str):
 
 
 
-@router.post("/issues/{connection_id}", response_model=CreateIssueResponse)
-async def create_issue(connection_id: str, request: CreateIssueRequest):
+@router.post("/issues/{connection_id}")
+async def create_issue(connection_id: str, request: dict):
     """
     Create a new Jira issue
     

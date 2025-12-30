@@ -1,37 +1,36 @@
 """
 Configuration settings for Nango Jira Integration Backend
 """
-from pydantic_settings import BaseSettings
-from functools import lru_cache
+import os
+from dotenv import load_dotenv
 
 
-class Settings(BaseSettings):
+load_dotenv()
+
+
+class Settings:
     """Application settings loaded from environment variables"""
-    
-    # Nango Configuration
-    nango_host: str = "https://app.nango.codemateai.dev"
-    nango_secret_key: str = ""
-    nango_public_key: str = ""
-    nango_jira_provider_key: str = "jira"
-    
-    # MongoDB Configuration
-    mongodb_url: str = "mongodb://localhost:27017"
-    mongodb_db_name: str = "nango_jira_demo"
-    
-    # Application Settings
-    api_host: str = "0.0.0.0"
-    api_port: int = 8000
-    debug: bool = True
-    
-    # CORS
-    frontend_url: str = "http://localhost:5173"
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+
+    def __init__(self):
+        # Nango Configuration
+        self.nango_host = os.environ.get("NANGO_HOST", "https://app.nango.codemateai.dev")
+        self.nango_secret_key = os.environ.get("NANGO_SECRET_KEY", "")
+        self.nango_public_key = os.environ.get("NANGO_PUBLIC_KEY", "")
+        self.nango_jira_provider_key = os.environ.get("NANGO_JIRA_PROVIDER_KEY", "jira")
+
+        # MongoDB Configuration
+        self.mongodb_url = os.environ.get("MONGODB_URL", "mongodb://localhost:27017")
+        self.mongodb_db_name = os.environ.get("MONGODB_DB_NAME", "nango_jira_demo")
+
+        # Application Settings
+        self.api_host = os.environ.get("API_HOST", "0.0.0.0")
+        self.api_port = int(os.environ.get("API_PORT", "8000"))
+        self.debug = os.environ.get("DEBUG", "True").lower() == "true"
+
+        # CORS
+        self.frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
 
-@lru_cache()
-def get_settings() -> Settings:
-    """Get cached settings instance"""
+def get_settings():
+    """Get settings instance"""
     return Settings()
